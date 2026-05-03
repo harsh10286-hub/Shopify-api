@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311", "libcurl", "pkg-config"]
+nixPkgs = ["python311", "curl", "pkgconfig"]
 
 [phases.install]
 cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
