@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Shopify Checker API - Complete
+Shopify Checker API - Full standalone script
 Endpoint: GET /shopify?site=...&cc=...&proxy=...
 """
 
@@ -16,10 +16,10 @@ import sys
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Optional
+import uvicorn
 
 # ------------------------------------------------------------
-# 1. YOUR ORIGINAL SCRIPT (copied in full)
-#    (from the first line down to the end of run_shopify_check)
+# ORIGINAL SCRIPT (copied in full, no modifications)
 # ------------------------------------------------------------
 
 try:
@@ -1194,89 +1194,8 @@ async def _do_one_check(session, site_url, cc, mon, year, cvv, fingerprint, prox
     _steps.append(f"7. Result: ERROR | {msg}")
     return {"status": "Error", "message": msg, "product": product_title, "price": price, "debug_steps": _steps}
 
-async def check_site_fast(site_url, proxy_url=None, max_price=40.0, min_price=10.0):
-    site_url = site_url.strip().rstrip("/")
-    fingerprint = get_random_fingerprint()
-    product_header = {
-        "User-Agent": fingerprint.get("User-Agent", _FALLBACK_UA),
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": site_url,
-        "Origin": site_url,
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-    }
-    _proxy_fmt = None
-    if proxy_url:
-        _proxy_fmt = format_proxy(proxy_url) if isinstance(proxy_url, str) else proxy_url
-    try:
-        async with _create_async_client(proxy_url=_proxy_fmt, timeout=12.0, chrome_version=fingerprint.get("_chrome_ver")) as client:
-            r = await client.get(site_url + "/products.json", headers=product_header)
-            if r.status_code != 200:
-                return {"ok": False, "price": None, "product": "", "available": False, "error": f"HTTP {r.status_code}"}
-            try:
-                data = r.json()
-            except Exception:
-                return {"ok": False, "price": None, "product": "", "available": False, "error": "Not a Shopify store"}
-            products = data.get("products") or []
-            if not products:
-                return {"ok": False, "price": None, "product": "", "available": False, "error": "No products found"}
-            lowest_price = None
-            lowest_product = None
-            lowest_variant = None
-            for product in products:
-                variants = product.get("variants") or []
-                for v in variants:
-                    available = v.get("available", True)
-                    if isinstance(available, str):
-                        available = available.lower() in ("true", "1", "yes")
-                    if not available:
-                        continue
-                    price_str = v.get("price") or "0"
-                    try:
-                        price_val = float(str(price_str).replace("$", "").replace(",", "").strip())
-                    except (ValueError, TypeError):
-                        continue
-                    if price_val < min_price:
-                        continue
-                    if lowest_price is None or price_val < lowest_price:
-                        lowest_price = price_val
-                        lowest_product = product
-                        lowest_variant = v
-            if lowest_product is None or lowest_variant is None:
-                return {"ok": False, "price": None, "product": "", "available": False, "error": f"No products between ${min_price:.2f}-${max_price:.2f}"}
-            price_str = lowest_variant.get("price") or "0"
-            ok = lowest_price <= max_price
-            result = {
-                "ok": ok,
-                "price": price_str,
-                "product": lowest_product.get("title", "")[:60],
-                "available": True,
-                "lowest_price": lowest_price
-            }
-            if not ok:
-                result["error"] = f"Price ${lowest_price:.2f} exceeds max ${max_price:.2f}"
-            return result
-    except _NETWORK_ERRORS as e:
-        _ename = type(e).__name__
-        if "Timeout" in _ename:
-            return {"ok": False, "price": None, "product": "", "available": False, "error": "Timeout (15s)"}
-        elif "Connect" in _ename:
-            return {"ok": False, "price": None, "product": "", "available": False, "error": "Cannot connect"}
-        else:
-            return {"ok": False, "price": None, "product": "", "available": False, "error": f"Network: {_ename}"}
-    except Exception as e:
-        error_msg = str(e)[:50]
-        if "SSL" in error_msg or "certificate" in error_msg.lower():
-            return {"ok": False, "price": None, "product": "", "available": False, "error": "SSL error"}
-        return {"ok": False, "price": None, "product": "", "available": False, "error": error_msg}
-
 # ------------------------------------------------------------
-# 2. FastAPI Application
+# FASTAPI APPLICATION
 # ------------------------------------------------------------
 app = FastAPI(title="Shopify Checker API", description="Full checkout with TLS fingerprinting")
 
@@ -1290,18 +1209,14 @@ async def shopify_check(
     Perform a Shopify checkout.
     Example: /shopify?site=https://renovate-wallcoverings.myshopify.com&cc=4141700002481312|12|2026|161&proxy=user:pass@123.45.67.89:8080
     """
-    # Ensure site has scheme
     if not site.startswith(("http://", "https://")):
         site = "https://" + site
-    # Validate card format
     parts = cc.strip().replace(" ", "").split("|")
     if len(parts) != 4:
         raise HTTPException(status_code=400, detail="Invalid card format. Use cc|mm|yyyy|cvv")
-    # Run the check
     start = _time.time()
     result = await run_shopify_check(site_url=site, card_str=cc, proxy_url=proxy, verbose=False, timeout=120.0)
     elapsed = _time.time() - start
-    # Build response
     response = {
         "status": result.get("status", "Error"),
         "message": result.get("message", ""),
@@ -1322,9 +1237,8 @@ async def root():
     return {"message": "Shopify Checker API is running", "endpoint": "/shopify?site=...&cc=...&proxy=..."}
 
 # ------------------------------------------------------------
-# 3. Run with Uvicorn
+# RUN THE SERVER
 # ------------------------------------------------------------
 if __name__ == "__main__":
-    import uvicorn
     print("Starting Shopify API on http://0.0.0.0:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
