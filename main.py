@@ -45,7 +45,8 @@ try:
 except ImportError:
     print("[shopifyapi] ⚠️ curl_cffi not installed — using httpx (CAPTCHA risk higher)")
 
-_CHROME_TO_IMPERSONATE = {"136": "chrome136", "133": "chrome133a", "131": "chrome131", "124": "chrome124", "123": "chrome123", "120": "chrome120"}
+_CHROME_TO_IMPERSONATE = {"124": "chrome124", "120": "chrome120"}
+_CURL_IMPERSONATE = list(_CHROME_TO_IMPERSONATE.values())
 _CURL_IMPERSONATE = list(_CHROME_TO_IMPERSONATE.values())
 
 _H2_AVAILABLE = False
