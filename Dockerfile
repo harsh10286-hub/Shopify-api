@@ -1,13 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Install system dependencies for curl_cffi
-RUN apt-get update && apt-get install -y \
-    curl \
-    libcurl4-openssl-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+# Install libcurl and build tools (very small on Alpine)
+RUN apk add --no-cache curl libcurl gcc musl-dev
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
